@@ -13,6 +13,8 @@ export type WalletSetupResult = {
 
 export type WalletBalanceResult = Record<string, unknown>;
 export type WalletTransferResult = Record<string, unknown>;
+export type WalletSwapResult = Record<string, unknown>;
+export type WalletContractResult = Record<string, unknown>;
 
 function getSkillDir(): string {
   return (
@@ -124,4 +126,53 @@ export async function transfer(options: {
     '--json',
   ];
   return (await runWalletCommand('transfer.js', args)) as WalletTransferResult;
+}
+
+export async function swap(options: {
+  chain: string;
+  fromToken: string;
+  toToken: string;
+  amount: string;
+  quoteOnly?: boolean;
+  slippage?: string;
+  confirm?: boolean;
+}): Promise<WalletSwapResult> {
+  await assertWalletExists();
+  const args = [
+    options.chain,
+    options.fromToken,
+    options.toToken,
+    options.amount,
+  ];
+  if (options.quoteOnly) {
+    args.push('--quote-only');
+  }
+  if (options.slippage) {
+    args.push('--slippage', options.slippage);
+  }
+  if (options.confirm) {
+    args.push('--yes');
+  }
+  args.push('--json');
+  return (await runWalletCommand('swap.js', args)) as WalletSwapResult;
+}
+
+export async function contractCall(options: {
+  chain: string;
+  contract: string;
+  signature: string;
+  args?: string[];
+  write?: boolean;
+  confirm?: boolean;
+}): Promise<WalletContractResult> {
+  await assertWalletExists();
+  const args = [options.chain, options.contract, options.signature, ...(options.args ?? [])];
+  if (options.write) {
+    if (!options.confirm) {
+      throw new Error('Contract write requires confirm=true.');
+    }
+    args.push('--yes');
+  }
+  args.push('--json');
+  return (await runWalletCommand('contract.js', args)) as WalletContractResult;
 }
