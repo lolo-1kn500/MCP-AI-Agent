@@ -2,16 +2,27 @@ import { createAgent } from './agent.js';
 import { defaultTools } from './tools.js';
 
 async function main() {
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const provider = (process.env.CHAT_PROVIDER as 'openrouter' | 'elizacloud') ??
+    (process.env.ELIZA_API_KEY ? 'elizacloud' : 'openrouter');
+  const apiKey =
+    provider === 'elizacloud'
+      ? process.env.ELIZA_API_KEY
+      : process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
-    throw new Error('OPENROUTER_API_KEY is required');
+    throw new Error(
+      provider === 'elizacloud'
+        ? 'ELIZA_API_KEY is required'
+        : 'OPENROUTER_API_KEY is required'
+    );
   }
 
   const agent = createAgent({
     apiKey,
-    model: 'openrouter/auto',
+    model: provider === 'elizacloud' ? 'gpt-4o' : 'openrouter/auto',
     instructions: 'You are Kai, a helpful assistant with access to tools.',
     tools: defaultTools,
+    provider,
+    baseUrl: process.env.ELIZA_API_URL,
   });
 
   agent.on('thinking:start', () => console.log('\nThinking...'));

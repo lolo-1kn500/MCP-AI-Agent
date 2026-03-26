@@ -28,6 +28,8 @@ export interface AgentConfig {
   instructions?: string;
   tools?: Tool[];
   maxSteps?: number;
+  provider?: 'openrouter' | 'elizacloud';
+  baseUrl?: string;
 }
 
 export class Agent extends EventEmitter<AgentEvents> {
@@ -37,13 +39,17 @@ export class Agent extends EventEmitter<AgentEvents> {
 
   constructor(config: AgentConfig) {
     super();
+    const provider = config.provider ?? 'openrouter';
+    const defaultModel = provider === 'elizacloud' ? 'gpt-4o' : 'openrouter/auto';
     this.client = new OpenRouter({ apiKey: config.apiKey });
     this.config = {
       apiKey: config.apiKey,
-      model: config.model ?? 'openrouter/auto',
+      model: config.model ?? defaultModel,
       instructions: config.instructions ?? 'You are a helpful assistant.',
       tools: config.tools ?? [],
       maxSteps: config.maxSteps ?? 5,
+      provider,
+      baseUrl: config.baseUrl ?? 'https://elizacloud.ai/api/v1',
     };
   }
 
@@ -70,6 +76,17 @@ export class Agent extends EventEmitter<AgentEvents> {
     this.emit('thinking:start');
 
     try {
+      if (this.config.provider === 'elizacloud') {
+        this.emit('stream:start');
+        const fullText = await this.sendViaElizaCloud();
+        this.emit('stream:delta', fullText, fullText);
+        this.emit('stream:end', fullText);
+        const assistantMessage: Message = { role: 'assistant', content: fullText };
+        this.messages.push(assistantMessage);
+        this.emit('message:assistant', assistantMessage);
+        return fullText;
+      }
+
       const result = this.client.callModel({
         model: this.config.model,
         instructions: this.config.instructions,
@@ -145,6 +162,14 @@ export class Agent extends EventEmitter<AgentEvents> {
     this.emit('message:user', userMessage);
 
     try {
+      if (this.config.provider === 'elizacloud') {
+        const fullText = await this.sendViaElizaCloud();
+        const assistantMessage: Message = { role: 'assistant', content: fullText };
+        this.messages.push(assistantMessage);
+        this.emit('message:assistant', assistantMessage);
+        return fullText;
+      }
+
       const result = this.client.callModel({
         model: this.config.model,
         instructions: this.config.instructions,
@@ -163,6 +188,40 @@ export class Agent extends EventEmitter<AgentEvents> {
       this.emit('error', error);
       throw error;
     }
+  }
+
+  private async sendViaElizaCloud(): Promise<string> {
+    const body = {
+      model: this.config.model,
+      messages: [
+        { role: 'system', content: this.config.instructions },
+        ...this.messages.map((m) => ({ role: m.role, content: m.content })),
+      ],
+    };
+
+    const response = await fetch(`${this.config.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.config.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`ElizaCloud error ${response.status}: ${text}`);
+    }
+
+    const data = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) {
+      throw new Error('ElizaCloud response missing message content');
+    }
+    return content;
   }
 }
 
