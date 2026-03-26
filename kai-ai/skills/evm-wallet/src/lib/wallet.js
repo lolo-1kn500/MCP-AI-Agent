@@ -4,14 +4,25 @@
  */
 
 import { existsSync, readFileSync, writeFileSync, chmodSync } from 'fs';
-import { join } from 'path';
+import { join, resolve, dirname } from 'path';
 import { homedir } from 'os';
+import { mkdirSync } from 'fs';
 import { createWalletClient, http } from 'viem';
 import { privateKeyToAccount, generatePrivateKey } from 'viem/accounts';
 import { getChain } from './chains.js';
 
-// Wallet lives in user's home directory — never in the project
-const WALLET_PATH = join(homedir(), '.evm-wallet.json');
+function resolveWalletPath() {
+  const envPath = process.env.EVM_WALLET_PATH;
+  if (envPath && envPath.trim().length > 0) {
+    return resolve(envPath);
+  }
+  return join(homedir(), '.evm-wallet.json');
+}
+
+function ensureWalletDir(walletPath) {
+  const dir = dirname(walletPath);
+  mkdirSync(dir, { recursive: true });
+}
 
 /**
  * Generate a new wallet
@@ -34,11 +45,12 @@ export function generate() {
  */
 export function load() {
   try {
-    if (!existsSync(WALLET_PATH)) {
+    const walletPath = resolveWalletPath();
+    if (!existsSync(walletPath)) {
       return null;
     }
     
-    const data = readFileSync(WALLET_PATH, 'utf8');
+    const data = readFileSync(walletPath, 'utf8');
     const wallet = JSON.parse(data);
     
     // Validate wallet structure
@@ -59,10 +71,12 @@ export function load() {
 export function save(wallet) {
   try {
     const data = JSON.stringify(wallet, null, 2);
-    writeFileSync(WALLET_PATH, data, 'utf8');
+    const walletPath = resolveWalletPath();
+    ensureWalletDir(walletPath);
+    writeFileSync(walletPath, data, 'utf8');
     
     // Set secure permissions (owner read/write only)
-    chmodSync(WALLET_PATH, 0o600);
+    chmodSync(walletPath, 0o600);
   } catch (error) {
     throw new Error(`Failed to save wallet: ${error.message}`);
   }
@@ -139,7 +153,7 @@ export function getWalletClient(chainName) {
  * @returns {boolean} True if wallet exists
  */
 export function exists() {
-  return existsSync(WALLET_PATH);
+  return existsSync(resolveWalletPath());
 }
 
 /**

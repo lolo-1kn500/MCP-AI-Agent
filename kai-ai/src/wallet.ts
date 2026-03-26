@@ -1,7 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
-import os from 'node:os';
 import fs from 'node:fs/promises';
 
 const execFileAsync = promisify(execFile);
@@ -22,6 +21,13 @@ function getSkillDir(): string {
   );
 }
 
+function getWalletPath(): string {
+  return (
+    process.env.EVM_WALLET_PATH ??
+    path.resolve(process.cwd(), '.secrets', 'evm-wallet.json')
+  );
+}
+
 async function assertSkillInstalled(): Promise<string> {
   const skillDir = getSkillDir();
   try {
@@ -35,7 +41,7 @@ async function assertSkillInstalled(): Promise<string> {
 }
 
 async function assertWalletExists(): Promise<void> {
-  const walletPath = path.join(os.homedir(), '.evm-wallet.json');
+  const walletPath = getWalletPath();
   try {
     await fs.access(walletPath);
   } catch {
@@ -45,10 +51,17 @@ async function assertWalletExists(): Promise<void> {
 
 async function runWalletCommand(script: string, args: string[]): Promise<unknown> {
   const skillDir = await assertSkillInstalled();
+  const walletPath = getWalletPath();
   const { stdout } = await execFileAsync(
     'node',
     [path.join('src', script), ...args],
-    { cwd: skillDir }
+    {
+      cwd: skillDir,
+      env: {
+        ...process.env,
+        EVM_WALLET_PATH: walletPath,
+      },
+    }
   );
   try {
     return JSON.parse(stdout);

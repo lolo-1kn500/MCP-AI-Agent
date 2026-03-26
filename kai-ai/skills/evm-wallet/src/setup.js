@@ -7,7 +7,7 @@
 
 import { generate, save, exists, getWalletInfo } from './lib/wallet.js';
 import { homedir } from 'os';
-import { join } from 'path';
+import { join, resolve } from 'path';
 
 // Parse command line arguments
 const args = process.argv.slice(2);
@@ -84,7 +84,10 @@ async function main() {
       console.log('✅ Wallet created successfully!');
       console.log(`\nAddress: ${wallet.address}`);
       console.log(`Created: ${wallet.createdAt}`);
-      console.log(`\nWallet saved to: ${join(homedir(), '.evm-wallet.json')}`);
+      const walletPath = process.env.EVM_WALLET_PATH
+        ? resolve(process.env.EVM_WALLET_PATH)
+        : join(homedir(), '.evm-wallet.json');
+      console.log(`\nWallet saved to: ${walletPath}`);
       console.log('🔒 Private key stored securely (chmod 600)');
       console.log('\n⚠️  IMPORTANT: Back up your wallet file! If lost, funds cannot be recovered.');
       
