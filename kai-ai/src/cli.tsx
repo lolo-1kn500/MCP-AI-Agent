@@ -12,7 +12,7 @@ if (!apiKey) {
 const agent = createAgent({
   apiKey,
   model: 'openrouter/auto',
-  instructions: 'You are a helpful assistant. Be concise.',
+  instructions: 'You are Kai, a helpful assistant. Be concise.',
   tools: defaultTools,
 });
 
@@ -150,7 +150,7 @@ function App() {
   return (
     <Box flexDirection="column">
       <Box marginBottom={1}>
-        <Text color="cyan">OpenRouter Agent</Text>
+        <Text color="cyan">Kai</Text>
         <Text> (Esc to exit)</Text>
       </Box>
 

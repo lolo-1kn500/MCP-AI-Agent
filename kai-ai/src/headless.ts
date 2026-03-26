@@ -10,7 +10,7 @@ async function main() {
   const agent = createAgent({
     apiKey,
     model: 'openrouter/auto',
-    instructions: 'You are a helpful assistant with access to tools.',
+    instructions: 'You are Kai, a helpful assistant with access to tools.',
     tools: defaultTools,
   });
 
