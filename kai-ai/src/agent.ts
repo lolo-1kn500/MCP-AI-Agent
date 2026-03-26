@@ -78,8 +78,11 @@ export class Agent extends EventEmitter<AgentEvents> {
     try {
       if (this.config.provider === 'elizacloud') {
         this.emit('stream:start');
-        const fullText = await this.sendViaElizaCloud();
-        this.emit('stream:delta', fullText, fullText);
+        const fullText = await this.sendViaElizaCloudStream((delta, accumulated) => {
+          if (delta) {
+            this.emit('stream:delta', delta, accumulated);
+          }
+        });
         this.emit('stream:end', fullText);
         const assistantMessage: Message = { role: 'assistant', content: fullText };
         this.messages.push(assistantMessage);
@@ -222,6 +225,78 @@ export class Agent extends EventEmitter<AgentEvents> {
       throw new Error('ElizaCloud response missing message content');
     }
     return content;
+  }
+
+  private async sendViaElizaCloudStream(
+    onDelta: (delta: string, accumulated: string) => void
+  ): Promise<string> {
+    const body = {
+      model: this.config.model,
+      messages: [
+        { role: 'system', content: this.config.instructions },
+        ...this.messages.map((m) => ({ role: m.role, content: m.content })),
+      ],
+      stream: true,
+    };
+
+    const response = await fetch(`${this.config.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.config.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`ElizaCloud error ${response.status}: ${text}`);
+    }
+
+    if (!response.body) {
+      throw new Error('ElizaCloud response missing body stream');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let fullText = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data:')) continue;
+        const data = trimmed.slice(5).trim();
+        if (!data || data === '[DONE]') continue;
+
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(data);
+        } catch {
+          continue;
+        }
+
+        const delta =
+          typeof parsed === 'object' && parsed !== null
+            ? (parsed as { choices?: Array<{ delta?: { content?: string } }> })
+                .choices?.[0]?.delta?.content
+            : undefined;
+
+        if (delta) {
+          fullText += delta;
+          onDelta(delta, fullText);
+        }
+      }
+    }
+
+    return fullText;
   }
 }
 
