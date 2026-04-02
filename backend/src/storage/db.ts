@@ -2,7 +2,8 @@ import { Pool } from "pg"
 import { config } from "../config"
 
 export const db = new Pool({
-  connectionString: config.databaseUrl
+  connectionString: config.databaseUrl,
+  ssl: { rejectUnauthorized: false }
 })
 
 export async function ensureSchema() {
@@ -59,7 +60,7 @@ export async function ensureSchema() {
 
     create table if not exists agent_wallets (
       id text primary key,
-      agent_id text references agents(id) on delete cascade,
+      agent_id uuid references agents(id) on delete cascade,
       chain text,
       address text not null,
       type text,
@@ -69,7 +70,7 @@ export async function ensureSchema() {
 
     create table if not exists agent_api_keys (
       id text primary key,
-      agent_id text references agents(id) on delete cascade,
+      agent_id uuid references agents(id) on delete cascade,
       provider text not null,
       key_ciphertext text not null,
       key_kms_ref text,
@@ -80,7 +81,7 @@ export async function ensureSchema() {
 
     create table if not exists agent_tools (
       id text primary key,
-      agent_id text references agents(id) on delete cascade,
+      agent_id uuid references agents(id) on delete cascade,
       tool_name text not null,
       endpoint text not null,
       schema_json jsonb,
@@ -92,7 +93,7 @@ export async function ensureSchema() {
     create table if not exists tool_usage (
       id text primary key,
       tool_id text references agent_tools(id) on delete cascade,
-      caller_agent_id text references agents(id) on delete set null,
+      caller_agent_id uuid references agents(id) on delete set null,
       api_call_id text,
       status text,
       cost_usdc numeric,
@@ -101,7 +102,7 @@ export async function ensureSchema() {
 
     create table if not exists agent_mcp_connections (
       id text primary key,
-      agent_id text references agents(id) on delete cascade,
+      agent_id uuid references agents(id) on delete cascade,
       server_name text,
       base_url text,
       auth_type text,
@@ -112,7 +113,7 @@ export async function ensureSchema() {
 
     create table if not exists agent_services (
       id text primary key,
-      agent_id text references agents(id) on delete cascade,
+      agent_id uuid references agents(id) on delete cascade,
       service_name text not null,
       capabilities jsonb,
       price_usdc numeric,
@@ -123,8 +124,8 @@ export async function ensureSchema() {
 
     create table if not exists service_requests (
       id text primary key,
-      caller_agent_id text references agents(id) on delete set null,
-      provider_agent_id text references agents(id) on delete set null,
+      caller_agent_id uuid references agents(id) on delete set null,
+      provider_agent_id uuid references agents(id) on delete set null,
       service_id text references agent_services(id) on delete set null,
       status text,
       api_call_id text,
@@ -133,8 +134,8 @@ export async function ensureSchema() {
 
     create table if not exists api_calls (
       id text primary key,
-      caller_agent_id text references agents(id) on delete set null,
-      provider_agent_id text references agents(id) on delete set null,
+      caller_agent_id uuid references agents(id) on delete set null,
+      provider_agent_id uuid references agents(id) on delete set null,
       tool_id text references agent_tools(id) on delete set null,
       service_id text references agent_services(id) on delete set null,
       status text,
@@ -157,7 +158,7 @@ export async function ensureSchema() {
 
     create table if not exists wallet_ledger (
       id bigserial primary key,
-      agent_id text references agents(id) on delete set null,
+      agent_id uuid references agents(id) on delete set null,
       wallet text not null,
       direction text not null,
       amount_usdc numeric not null,
@@ -169,7 +170,7 @@ export async function ensureSchema() {
 
     create table if not exists reputation_events (
       id bigserial primary key,
-      agent_id text references agents(id) on delete cascade,
+      agent_id uuid references agents(id) on delete cascade,
       source text,
       delta numeric,
       reason text,
