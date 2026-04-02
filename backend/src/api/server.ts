@@ -2,7 +2,7 @@ import express from "express"
 import cors from "cors"
 
 import taskRoutes from "./routes/task"
-import agentRoutes from "./routes/agent"
+import { agentRouter } from "../routes/agent"
 
 export function startServer(){
 
@@ -12,7 +12,7 @@ export function startServer(){
  app.use(express.json())
 
  app.use("/task",taskRoutes)
- app.use("/agent",agentRoutes)
+ app.use("/agent",agentRouter)
 
  app.listen(3001,()=>{
   console.log("OmniClaw running")

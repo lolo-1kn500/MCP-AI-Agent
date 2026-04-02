@@ -2,7 +2,14 @@ import { Router } from "express"
 import { Readable } from "stream"
 import { randomUUID } from "crypto"
 import { chatWithOpenRouter } from "../llm/openrouter"
-import { createX402Payment, verifyX402Payment } from "../payments/x402"
+import { config } from "../config"
+import {
+  createPendingApiCall,
+  createX402Payment,
+  getPayerAllowlist,
+  setPayerAllowlist,
+  verifyAndFinalizeX402Payment
+} from "../payments/x402"
 import { db } from "../storage/db"
 import {
   completeAuth,
@@ -18,6 +25,19 @@ import {
 } from "../tools/thirdweb"
 
 export const protocolRouter = Router()
+
+function requireAdmin(req: any, res: any) {
+  if (!config.adminApiKey) {
+    res.status(500).json({ error: "admin_api_key_not_configured" })
+    return false
+  }
+  const provided = String(req.header("x-admin-key") || "")
+  if (provided !== config.adminApiKey) {
+    res.status(401).json({ error: "unauthorized" })
+    return false
+  }
+  return true
+}
 
 function parseQueryArray(value: unknown): string[] {
   if (Array.isArray(value)) {
@@ -38,15 +58,36 @@ function parseChainIds(value: unknown): number[] {
     .filter((item) => !Number.isNaN(item))
 }
 
-async function requireX402Payment(req: any, res: any) {
+async function requireX402Payment(
+  req: any,
+  res: any,
+  options?: { priceUsdc?: string; payeeWallet?: string }
+) {
   const paymentId = String(req.header("x402-payment-id") || "")
-  if (paymentId && (await verifyX402Payment(paymentId))) {
-    return true
+  const paymentTx = String(req.header("x402-payment-tx") || "")
+  const priceUsdc = options?.priceUsdc || config.x402Amount
+  const payee = options?.payeeWallet || config.x402Recipient
+
+  if (paymentId && paymentTx) {
+    const verified = await verifyAndFinalizeX402Payment(
+      paymentId,
+      paymentTx,
+      priceUsdc,
+      payee
+    )
+    if (verified) {
+      return true
+    }
   }
+
   const payment = await createX402Payment()
+  await createPendingApiCall({ id: payment.id, priceUsdc })
   res.status(402).json({
     error: "payment_required",
-    payment
+    payment,
+    api_call_id: payment.id,
+    price_usdc: priceUsdc,
+    payee_wallet: payee
   })
   return false
 }
@@ -62,11 +103,175 @@ protocolRouter.get("/agents", async (_req, res) => {
   res.json(result.rows)
 })
 
+protocolRouter.get("/agents/:agentId/tools", async (req, res) => {
+  const { agentId } = req.params
+  const result = await db.query(
+    `select id, tool_name, endpoint, schema_json, price_usdc, active, created_at
+     from agent_tools where agent_id = $1 order by created_at desc`,
+    [agentId]
+  )
+  res.json(result.rows)
+})
+
+protocolRouter.post("/agents/:agentId/tools", async (req, res) => {
+  const { agentId } = req.params
+  const { toolName, endpoint, schema, priceUsdc, active = true } = req.body || {}
+  if (!toolName || !endpoint) {
+    return res.status(400).json({ error: "toolName and endpoint are required" })
+  }
+  const id = randomUUID()
+  await db.query(
+    `insert into agent_tools (id, agent_id, tool_name, endpoint, schema_json, price_usdc, active)
+     values ($1, $2, $3, $4, $5, $6, $7)`,
+    [id, agentId, toolName, endpoint, schema || null, priceUsdc || null, active]
+  )
+  res.json({ id, toolName, endpoint, priceUsdc: priceUsdc || null, active })
+})
+
+protocolRouter.get("/agents/:agentId/services", async (req, res) => {
+  const { agentId } = req.params
+  const result = await db.query(
+    `select id, service_name, capabilities, price_usdc, active, sla_json, created_at
+     from agent_services where agent_id = $1 order by created_at desc`,
+    [agentId]
+  )
+  res.json(result.rows)
+})
+
+protocolRouter.post("/agents/:agentId/services", async (req, res) => {
+  const { agentId } = req.params
+  const { serviceName, capabilities, priceUsdc, active = true, sla } = req.body || {}
+  if (!serviceName) {
+    return res.status(400).json({ error: "serviceName is required" })
+  }
+  const id = randomUUID()
+  await db.query(
+    `insert into agent_services (id, agent_id, service_name, capabilities, price_usdc, active, sla_json)
+     values ($1, $2, $3, $4, $5, $6, $7)`,
+    [id, agentId, serviceName, capabilities || null, priceUsdc || null, active, sla || null]
+  )
+  res.json({ id, serviceName, priceUsdc: priceUsdc || null, active })
+})
+
+protocolRouter.get("/agents/:agentId/mcp-connections", async (req, res) => {
+  const { agentId } = req.params
+  const result = await db.query(
+    `select id, server_name, base_url, auth_type, auth_ref, status, last_seen
+     from agent_mcp_connections where agent_id = $1 order by last_seen desc nulls last`,
+    [agentId]
+  )
+  res.json(result.rows)
+})
+
+protocolRouter.post("/agents/:agentId/mcp-connections", async (req, res) => {
+  const { agentId } = req.params
+  const { serverName, baseUrl, authType, authRef, status, lastSeen } = req.body || {}
+  if (!serverName || !baseUrl) {
+    return res
+      .status(400)
+      .json({ error: "serverName and baseUrl are required" })
+  }
+  const id = randomUUID()
+  await db.query(
+    `insert into agent_mcp_connections (id, agent_id, server_name, base_url, auth_type, auth_ref, status, last_seen)
+     values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [id, agentId, serverName, baseUrl, authType || null, authRef || null, status || null, lastSeen || null]
+  )
+  res.json({ id, serverName, baseUrl, status: status || null })
+})
+
+protocolRouter.get("/agents/:agentId/api-keys", async (req, res) => {
+  if (!requireAdmin(req, res)) return
+  const { agentId } = req.params
+  const result = await db.query(
+    `select id, provider, scopes, created_at, revoked_at
+     from agent_api_keys where agent_id = $1 order by created_at desc`,
+    [agentId]
+  )
+  res.json(result.rows)
+})
+
+protocolRouter.post("/agents/:agentId/api-keys", async (req, res) => {
+  if (!requireAdmin(req, res)) return
+  const { agentId } = req.params
+  const { provider, keyCiphertext, keyKmsRef, scopes } = req.body || {}
+  if (!provider || !keyCiphertext) {
+    return res.status(400).json({ error: "provider and keyCiphertext are required" })
+  }
+  const id = randomUUID()
+  await db.query(
+    `insert into agent_api_keys (id, agent_id, provider, key_ciphertext, key_kms_ref, scopes)
+     values ($1, $2, $3, $4, $5, $6)`,
+    [id, agentId, provider, keyCiphertext, keyKmsRef || null, scopes || null]
+  )
+  res.json({ id, provider, scopes: scopes || [] })
+})
+
 protocolRouter.get("/skills", async (_req, res) => {
   const result = await db.query(
     "select id, name, source, version, installed_at from skills order by installed_at desc"
   )
   res.json(result.rows)
+})
+
+protocolRouter.get("/payments/receipts", async (req, res) => {
+  if (!requireAdmin(req, res)) return
+  const status = String(req.query.status || "")
+  const clauses: string[] = []
+  const params: any[] = []
+
+  if (status) {
+    clauses.push("api.status = $1")
+    params.push(status)
+  }
+
+  const where = clauses.length ? `where ${clauses.join(" and ")}` : ""
+  const sql = `
+    select pr.id, pr.api_call_id, pr.payer_wallet, pr.payee_wallet, pr.tx_hash, pr.amount_usdc,
+           pr.block_number, pr.confirmed_at, api.status
+    from payment_receipts pr
+    left join api_calls api on api.id = pr.api_call_id
+    ${where}
+    order by pr.confirmed_at desc
+    limit 200
+  `
+  const result = await db.query(sql, params)
+  res.json(result.rows)
+})
+
+protocolRouter.get("/api-calls", async (req, res) => {
+  if (!requireAdmin(req, res)) return
+  const status = String(req.query.status || "")
+  const clauses: string[] = []
+  const params: any[] = []
+  if (status) {
+    clauses.push("status = $1")
+    params.push(status)
+  }
+  const where = clauses.length ? `where ${clauses.join(" and ")}` : ""
+  const sql = `
+    select id, caller_agent_id, provider_agent_id, tool_id, service_id, status, price_usdc, nonce, created_at, updated_at
+    from api_calls
+    ${where}
+    order by created_at desc
+    limit 200
+  `
+  const result = await db.query(sql, params)
+  res.json(result.rows)
+})
+
+protocolRouter.get("/admin/payer-allowlist", (req, res) => {
+  if (!requireAdmin(req, res)) return
+  res.json({ allowlist: getPayerAllowlist() })
+})
+
+protocolRouter.post("/admin/payer-allowlist", (req, res) => {
+  if (!requireAdmin(req, res)) return
+  const list = Array.isArray(req.body?.allowlist)
+    ? req.body.allowlist
+    : []
+  setPayerAllowlist(list as string[])
+  res.json({ allowlist: getPayerAllowlist() })
 })
 
 protocolRouter.post("/skills/install", async (req, res) => {
@@ -233,7 +438,10 @@ protocolRouter.get("/tools/thirdweb/wallets/transactions", async (req, res) => {
   }
 
   try {
-    const query: Record<string, unknown> = {
+    const query: Record<
+      string,
+      string | number | boolean | Array<string | number | boolean>
+    > = {
       chainId: chainIds
     }
     const optionalKeys = [
@@ -278,7 +486,10 @@ protocolRouter.get("/tools/thirdweb/wallets/tokens", async (req, res) => {
 
   try {
     const tokenAddresses = parseQueryArray(req.query.tokenAddresses)
-    const query: Record<string, unknown> = {
+    const query: Record<
+      string,
+      string | number | boolean | Array<string | number | boolean>
+    > = {
       chainId: chainIds
     }
     if (tokenAddresses.length > 0) {
@@ -326,7 +537,10 @@ protocolRouter.get("/tools/thirdweb/wallets/nfts", async (req, res) => {
 
   try {
     const contractAddresses = parseQueryArray(req.query.contractAddresses)
-    const query: Record<string, unknown> = {
+    const query: Record<
+      string,
+      string | number | boolean | Array<string | number | boolean>
+    > = {
       chainId: chainIds
     }
     if (contractAddresses.length > 0) {
@@ -766,7 +980,7 @@ protocolRouter.post("/tools/thirdweb/ai/chat/stream", async (req, res) => {
       return
     }
 
-    Readable.fromWeb(response.body as unknown as ReadableStream).pipe(res)
+    Readable.fromWeb(response.body as any).pipe(res)
   } catch (error) {
     res.status(500).json({ error: String(error) })
   }

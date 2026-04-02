@@ -10,10 +10,18 @@ export const config = {
   x402TokenAddress:
     process.env.X402_USDC_TOKEN_ADDRESS ||
     "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  x402UsdcDecimals: Number(process.env.X402_USDC_DECIMALS || 6),
+  x402RpcUrl:
+    process.env.X402_RPC_URL || process.env.BASE_RPC || "https://mainnet.base.org",
   x402Amount: process.env.X402_USDC_AMOUNT || "0.1",
   x402Recipient:
     process.env.X402_USDC_RECIPIENT ||
-    "0xE4D622B2787D71fCb4Eb948710505f6be45A2808",
+    "0xbf2De1074f82A6cF37D5134694e7315956AE6d3F",
+  x402PayerAllowlist: (process.env.X402_PAYER_ALLOWLIST || "")
+    .split(",")
+    .map((a) => a.trim().toLowerCase())
+    .filter(Boolean),
+  adminApiKey: process.env.ADMIN_API_KEY || "",
   a2aPublicBaseUrl: process.env.A2A_PUBLIC_BASE_URL || "http://localhost:3001",
   databaseUrl:
     process.env.DATABASE_URL || "postgres://kai:kai@localhost:5432/kai_agent",

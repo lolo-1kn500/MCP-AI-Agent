@@ -1,4 +1,4 @@
-export function runTask(task){
+export function runTask(task: unknown) {
 
  return {
   task,
