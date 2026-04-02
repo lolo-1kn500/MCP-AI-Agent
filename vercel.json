@@ -1,18 +1,11 @@
 {
-  "version": 2,
-  "builds": [
-    { "src": "package.json", "use": "@vercel/static-build" }
-  ],
-  "routes": [
-    { "handle": "filesystem" },
-    { "src": "/.*", "dest": "/index.html" }
-  ],
-  "env": {
-    "OPENAI_KEY": "REPLACE_WITH_OPENAI_KEY",
-    "BASE_RPC": "REPLACE_WITH_BASE_RPC",
-    "MONAD_RPC": "REPLACE_WITH_MONAD_RPC",
-    "AGENT_PRIVATE_KEY": "REPLACE_WITH_AGENT_PRIVATE_KEY",
-    "JWT_SECRET": "REPLACE_WITH_JWT_SECRET",
-    "PORT": "3001"
-  }
+  "root": "next-app",
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "installCommand": "npm install --ignore-scripts",
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD backend || echo \"\"",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/$1" }
+  ]
 }
