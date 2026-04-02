@@ -260,6 +260,16 @@ protocolRouter.get("/api-calls", async (req, res) => {
   res.json(result.rows)
 })
 
+protocolRouter.get("/admin/wallet/address", async (req, res) => {
+  if (!requireAdmin(req, res)) return
+  try {
+    const { agentWallet } = await import("../wallet/agentWallet")
+    res.json({ address: agentWallet.address })
+  } catch (err) {
+    res.status(500).json({ error: String(err) })
+  }
+})
+
 protocolRouter.get("/admin/payer-allowlist", (req, res) => {
   if (!requireAdmin(req, res)) return
   res.json({ allowlist: getPayerAllowlist() })
