@@ -21,6 +21,17 @@ export async function chatOpenRouter({
   })
 }
 
+export async function summarizeText(text: string) {
+  const res = await client.chat.completions.create({
+    model: "openrouter/auto",
+    messages: [
+      { role: "system", content: "Summarize the text in one concise sentence and classify sentiment." },
+      { role: "user", content: text }
+    ]
+  })
+  return res.choices[0]?.message?.content || ""
+}
+
 export async function createEmbedding(text: string) {
   const res = await client.embeddings.create({
     model: "text-embedding-3-small",

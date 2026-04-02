@@ -1,24 +1,36 @@
 import { createClient } from "redis"
 import { config } from "../config"
 
-export const redis = createClient({
-  url: config.redisUrl,
-  socket: {
-    connectTimeout: 3000
+let redisErrorLogged = false
+
+export const redis =
+  !config.redisDisabled && config.redisUrl
+    ? createClient({
+        url: config.redisUrl,
+        socket: {
+          connectTimeout: 500,
+          reconnectStrategy: () => new Error("redis disabled reconnect")
+        }
+      })
+    : undefined
+
+redis?.on("error", (err) => {
+  if (!redisErrorLogged) {
+    redisErrorLogged = true
+    // Suppressed per request: no console output
   }
 })
 
-redis.on("error", (err) => {
-  console.error("Redis error", err)
-})
-
 export async function connectRedis() {
-  if (!config.redisUrl) return
+  if (!redis) return
   if (!redis.isOpen) {
     try {
       await redis.connect()
     } catch (err) {
-      console.error("Redis connect failed", err)
+      if (!redisErrorLogged) {
+        redisErrorLogged = true
+        // Suppressed per request: no console output
+      }
     }
   }
 }

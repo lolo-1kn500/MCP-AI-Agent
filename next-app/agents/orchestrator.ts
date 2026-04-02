@@ -9,7 +9,14 @@ const toolMap = {
 
 export async function orchestrate(messages: any[]) {
   // loop: let model choose tool calls until stop
-  const tools = [weatherTool, analysisTool]
+  const tools = [weatherTool, analysisTool].map((t) => ({
+    type: "function" as const,
+    function: {
+      name: t.function.name,
+      description: t.function.description,
+      parameters: t.function.parameters as z.ZodTypeAny
+    }
+  }))
   let running = true
   let history = messages
 

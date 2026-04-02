@@ -22,6 +22,7 @@ export const config = {
     .map((a) => a.trim().toLowerCase())
     .filter(Boolean),
   adminApiKey: process.env.ADMIN_API_KEY || "",
+  redisDisabled: process.env.REDIS_DISABLED === "true",
   a2aPublicBaseUrl: process.env.A2A_PUBLIC_BASE_URL || "http://localhost:3001",
   databaseUrl:
     process.env.DATABASE_URL || "postgres://kai:kai@localhost:5432/kai_agent",

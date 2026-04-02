@@ -2,11 +2,12 @@ import { NextResponse } from "next/server"
 import { orchestrate } from "../../../agents/orchestrator"
 import { paidFetch } from "../../../lib/paidFetch"
 import { searchMemory, upsertMemory } from "../../../lib/memory"
+import { getUserIdFromRequest } from "../../../lib/auth"
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))
   const messages = body.messages || []
-  const userId = body.userId || "anonymous"
+  const userId = (await getUserIdFromRequest(req)) || body.userId || "anonymous"
 
   // Payment verification (retry if 402)
   const paymentId = req.headers.get("x402-payment-id")
