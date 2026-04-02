@@ -199,9 +199,15 @@ export async function ensureSchema() {
   )
 
   await db.query(
-    `insert into agents (id, name, display_name, status)
-     values ($1, $2, $3, $4)
+    `insert into agents (id, name, display_name, status, wallet_address)
+     values ($1, $2, $3, $4, $5)
      on conflict (id) do nothing`,
-    ["kai", "Kai Agent", "Kai Agent", "online"]
+    [
+      "00000000-0000-0000-0000-000000000001",
+      "Kai Agent",
+      "Kai Agent",
+      "online",
+      process.env.AGENT_WALLET_ADDRESS || null
+    ]
   )
 }

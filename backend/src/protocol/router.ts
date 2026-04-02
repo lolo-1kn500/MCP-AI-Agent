@@ -96,6 +96,31 @@ protocolRouter.get("/health", async (_req, res) => {
   res.json({ status: "ok" })
 })
 
+protocolRouter.get("/health/deep", async (_req, res) => {
+  const checks: Record<string, unknown> = { status: "ok" }
+  try {
+    const dbResult = await db.query("select 1 as db_ok")
+    checks.db = dbResult.rows[0]?.db_ok === 1 ? "ok" : "fail"
+  } catch (err) {
+    checks.db = "fail"
+    checks.db_error = String(err)
+  }
+  try {
+    // ping redis only if configured
+    if (config.redisUrl) {
+      const { redis } = await import("../storage/redis")
+      const pong = await redis.ping()
+      checks.redis = pong === "PONG" ? "ok" : "fail"
+    } else {
+      checks.redis = "disabled"
+    }
+  } catch (err) {
+    checks.redis = "fail"
+    checks.redis_error = String(err)
+  }
+  res.json(checks)
+})
+
 protocolRouter.get("/agents", async (_req, res) => {
   const result = await db.query(
     "select id, name, status, created_at from agents order by created_at asc"
