@@ -1,0 +1,44 @@
+name: Vercel Deploy
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Vercel CLI
+        run: npm i -g vercel
+
+      - name: Build & Deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          BASE_RPC: https://mainnet.base.org
+          X402_USDC_TOKEN: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
+          X402_USDC_DECIMALS: 6
+          X402_PAYER_PRIVATE_KEY: ${{ secrets.X402_PAYER_PRIVATE_KEY }}
+          X402_PAYEE: ${{ secrets.X402_PAYEE }}
+          AGENT_WALLET_PRIVATE_KEY: ${{ secrets.AGENT_WALLET_PRIVATE_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEXT_PUBLIC_SUPABASE_URL: https://jvtzhweatiesjaklselg.supabase.co
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY: sb_publishable_-O8dZys7oddZmqQ34DtMuw_D8Ap9HTy
+          THIRDWEB_CLIENT_ID: ${{ secrets.THIRDWEB_CLIENT_ID }}
+          THIRDWEB_SECRET_KEY: ${{ secrets.THIRDWEB_SECRET_KEY }}
+          REDIS_DISABLED: true
+        run: |
+          cd next-app
+          vercel pull --yes --environment=production --token $VERCEL_TOKEN
+          vercel build --token $VERCEL_TOKEN
+          vercel deploy --prebuilt --token $VERCEL_TOKEN --yes
